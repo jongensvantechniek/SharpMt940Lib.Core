@@ -270,6 +270,7 @@ namespace Raptorious.SharpMt940Lib
                                 transaction = new Transaction(transactionData, customerStatementMessage.OpeningBalance.Currency, cultureInfo);
                                 break;
                             case ":86:":
+                                // extend this for RABO
                                 /* 
                                 * If the previous line was a 61 (ie, we have a transaction), the 'Information to Account Owner'
                                 * applies to the transaction, otherwise it applies to the whole message.
