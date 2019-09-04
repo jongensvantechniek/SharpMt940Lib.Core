@@ -270,7 +270,6 @@ namespace Raptorious.SharpMt940Lib
                                 transaction = new Transaction(transactionData, customerStatementMessage.OpeningBalance.Currency, cultureInfo);
                                 break;
                             case ":86:":
-                                // extend this for RABO
                                 /* 
                                 * If the previous line was a 61 (ie, we have a transaction), the 'Information to Account Owner'
                                 * applies to the transaction, otherwise it applies to the whole message.
@@ -279,9 +278,8 @@ namespace Raptorious.SharpMt940Lib
                                     customerStatementMessage = customerStatementMessage.SetDescription(transactionData);
                                 else
                                 {
-                                    transaction.Description = transactionData;
+                                    transaction.Description += $" {transactionData}";
                                 }
-                                addAndNullTransactionIfPresent();
                                 break;
                             case ":62F:":
                                 addAndNullTransactionIfPresent();
@@ -396,63 +394,67 @@ namespace Raptorious.SharpMt940Lib
             // Create  an empty list of string arrays.
             var transactions = new List<string[]>();
 
-
             // Offset pointer, starts a the first line (zero based index).
             int pointer = 0;
+
+            // Seperator, this is the Trailer! We split messages based on trailer! - Right, check.
+            var trailerIndex = Array.IndexOf(tokenized, format.Trailer.Data, pointer);
+
+            // if trailer is not found, create a default trailer
+            if (trailerIndex == -1)
+            {
+                // the default trailer
+                string newTrailer = "-}{5:}";
+                //upscale the array to add the trailer
+                Array.Resize(ref tokenized, tokenized.Length + 1);
+                // add the trailer to the array
+                tokenized[tokenized.Length-1] = newTrailer;
+                // set trailer index
+                trailerIndex = Array.IndexOf(tokenized, newTrailer, pointer);
+            }
 
             // Loop trough the entire file?
             while (pointer < tokenized.Length)
             {
-                // Seperator, this is the Trailer! We split messages based on trailer! - Right, check.
-                var trailerIndex = Array.IndexOf(tokenized, format.Trailer.Data, pointer);
-
                 // When we found a trailer.. then..
-                if (trailerIndex >= 0)
+           
+                // Create a new array the holds the correct number of elements.
+                string[] currentTransaction = new string[trailerIndex - pointer];
+
+                // Copy the data from the source array to our current transaction.
+                Array.Copy(tokenized, pointer, currentTransaction, 0, currentTransaction.Length);
+
+                // Walk trough the current message. Start at the current 
+                // index and stop at the separator.
+                for (int index = currentTransaction.Length - 1;
+                        index > format.Header.LineCount;
+                        index--)
                 {
-                    // Create a new array the holds the correct number of elements.
-                    string[] currentTransaction = new string[trailerIndex - pointer];
+                    // 
+                    string transactionItem = currentTransaction[index];
 
-                    // Copy the data from the source array to our current transaction.
-                    Array.Copy(tokenized, pointer, currentTransaction, 0, currentTransaction.Length);
+                    System.Diagnostics.Debug.Assert(transactionItem != null);
 
-                    // Walk trough the current message. Start at the current 
-                    // index and stop at the separator.
-                    for (int index = currentTransaction.Length - 1;
-                         index > format.Header.LineCount;
-                         index--)
+                    // If the transactionItem doesn't start with : then the
+                    // current line belongs to the previous one.
+                    if (!transactionItem.StartsWith(":", StringComparison.Ordinal))
                     {
-                        // 
-                        string transactionItem = currentTransaction[index];
+                        // Append ths current line to the previous line seperated by
+                        // and NewLine.
+                        currentTransaction[index - 1] += Environment.NewLine;
+                        currentTransaction[index - 1] += transactionItem;
 
-                        System.Diagnostics.Debug.Assert(transactionItem != null);
-
-                        // If the transactionItem doesn't start with : then the
-                        // current line belongs to the previous one.
-                        if (!transactionItem.StartsWith(":", StringComparison.Ordinal))
-                        {
-                            // Append ths current line to the previous line seperated by
-                            // and NewLine.
-                            currentTransaction[index - 1] += Environment.NewLine;
-                            currentTransaction[index - 1] += transactionItem;
-
-                            // Set the current item to null, it doesn't exist anymore.
-                            currentTransaction[index] = null;
-                        }
+                        // Set the current item to null, it doesn't exist anymore.
+                        currentTransaction[index] = null;
                     }
-
-                    // Add the current transaction.
-                    transactions.Add(currentTransaction);
-
-                    // Next up!
-                    pointer = (trailerIndex + 1);
                 }
-                else
-                {
-                    // Message doesn't contain a trailer. So it is invalid!
-                    throw new InvalidDataException("Can not find trailer!");
-                }
+
+                // Add the current transaction.
+                transactions.Add(currentTransaction);
+
+                // Next up!
+                pointer = (trailerIndex + 1);
             }
-
             return transactions;
         }
     }
